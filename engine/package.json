@@ -1,0 +1,13 @@
+{
+  "name": "@hybrid/engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prototype du moteur de charge et de fatigue HYBRID (course + musculation)",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "strava": "node scripts/strava-import.ts",
+    "rapport": "node scripts/rapport.ts",
+    "test": "node --test test/engine.test.ts"
+  }
+}
