@@ -51,6 +51,13 @@ Point de départ : le prototype web actuel (`index.html`, PWA statique avec phas
 5. **Sécurité santé** : l'app n'est pas un dispositif médical ; drapeaux rouges (douleur thoracique, blessure, malaise) → orientation vers un professionnel.
 6. **Vie privée par défaut** : données de santé chiffrées, hébergement UE, consentement explicite, export/suppression en un clic.
 
+## Décisions
+
+| Date | Décision | Conséquences |
+|---|---|---|
+| 18/11/2026 | **Version personnelle 100 % téléphone** : PWA installée depuis le navigateur, données sur le téléphone, un seul Worker Cloudflare gratuit (`hybrid.itsvoqaah.workers.dev`). Pas d'App Store, de Google Play ni de serveur. | Pas d'Apple Santé / Health Connect, synchro Strava à l'ouverture de l'app, sauvegarde manuelle vers iCloud / Google Drive. |
+| 18/11/2026 | **Système de fatigue retiré** : plus de charge unifiée, de fatigue par muscle, d'allègement automatique des séances, de Readiness Score ni de ressenti du matin. | Doc 04 §4.1, 4.2, 4.3 et 4.5 marqués « retiré ». Le plan reste fixe ; les ajustements passent par l'athlète ou par une proposition du coach IA. Le Race Predictor (§4.6) garde ses facteurs volume et force. |
+
 ## 4. Périmètre fonctionnel (modules)
 
 | Module | Fonctions | Doc |

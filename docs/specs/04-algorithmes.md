@@ -8,7 +8,10 @@ Sommaire : 4.1 Charge unifiée · 4.2 Fatigue locale & systémique · 4.3 Régul
 
 ---
 
-## 4.1 Charge d'entraînement unifiée (UA)
+## 4.1 Charge d'entraînement unifiée (UA) — *retiré*
+
+> 🚫 **Retiré du produit (décision du 18/11/2026).** Le système de fatigue (charge unifiée, fatigue par muscle, régulation automatique, Readiness) ne fait plus partie de l'application. Cette section est conservée pour mémoire uniquement.
+
 
 Objectif : une **monnaie commune** entre course, muscu, foot, HYROX. Échelle calibrée pour que **1 h à intensité seuil ≈ 100 UA** (proche du TSS).
 
@@ -37,7 +40,10 @@ Usage de l'ACWR : **garde-fou, pas vérité absolue** (sa valeur prédictive des
 
 ---
 
-## 4.2 Modèle de fatigue : systémique + locale (cœur de l'hybride)
+## 4.2 Modèle de fatigue : systémique + locale (cœur de l'hybride) — *retiré*
+
+> 🚫 **Retiré du produit (décision du 18/11/2026).** Le système de fatigue (charge unifiée, fatigue par muscle, régulation automatique, Readiness) ne fait plus partie de l'application. Cette section est conservée pour mémoire uniquement.
+
 
 L'idée clé : un 10 km facile et un squat lourd n'ont pas la même charge **cardio**, mais tous deux fatiguent les **quadriceps**. On modélise donc **10 compartiments musculaires** + 1 compartiment systémique, chacun avec un **impulse** et une **décroissance exponentielle**.
 
@@ -90,7 +96,10 @@ export function projectFatigue(impulses: Impulse[], at: Date, cfg: CompartmentCf
 
 ---
 
-## 4.3 Régulation automatique (course ⇄ musculation)
+## 4.3 Régulation automatique (course ⇄ musculation) — *retiré*
+
+> 🚫 **Retiré du produit (décision du 18/11/2026).** Le système de fatigue (charge unifiée, fatigue par muscle, régulation automatique, Readiness) ne fait plus partie de l'application. Cette section est conservée pour mémoire uniquement.
+
 
 Déclenchée à chaque `activity.imported`, `workout.completed`, `wellness.checkin`, et chaque nuit à 03:00 (heure locale). Elle ne touche que les séances des **72 h** suivantes non commencées, **enregistre l'original** (`planned_sessions.original`) et une **raison lisible**.
 
@@ -154,7 +163,10 @@ for (const s of upcomingSessions(user, 72h)) {
 
 ---
 
-## 4.5 Readiness Score (0-100), calculé chaque matin
+## 4.5 Readiness Score (0-100), calculé chaque matin — *retiré*
+
+> 🚫 **Retiré du produit (décision du 18/11/2026).** Le système de fatigue (charge unifiée, fatigue par muscle, régulation automatique, Readiness) ne fait plus partie de l'application. Cette section est conservée pour mémoire uniquement.
+
 
 | Composante | Calcul du sous-score (0-100) | Poids |
 |---|---|---|

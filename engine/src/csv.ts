@@ -1,4 +1,4 @@
-// Lecture des fichiers CSV saisis à la main (Excel FR : séparateur « ; » et virgule décimale acceptés).
+// Lecture du carnet de musculation saisi à la main (Excel FR : séparateur « ; » et virgule décimale acceptés).
 import type { Activity, SetLog } from './types.ts';
 
 export function parseCsv(text: string): Array<Record<string, string>> {
@@ -37,7 +37,7 @@ function naiveDate(dateKey: string, hhmm: string | undefined): Date {
 
 export interface CsvIssue { line: number; message: string }
 
-/** Une ligne = une série. Les colonnes de séance (durée, RPE séance) peuvent figurer sur n'importe quelle ligne du jour. */
+/** Une ligne = une série. La durée de séance peut figurer sur n'importe quelle ligne du jour. */
 export function strengthSessionsFromCsv(text: string): { sessions: Activity[]; issues: CsvIssue[] } {
   const rows = parseCsv(text);
   const issues: CsvIssue[] = [];
@@ -61,19 +61,6 @@ export function strengthSessionsFromCsv(text: string): { sessions: Activity[]; i
     s.sets!.push(set);
     const dur = parseNumber(r['duree_seance_min']);
     if (dur) s.durationS = dur * 60;
-    const rpeS = parseNumber(r['rpe_seance']);
-    if (rpeS) s.rpe = rpeS;
   });
   return { sessions: [...byKey.values()], issues };
-}
-
-/** Ressenti du matin : jambes de 1 (frais) à 10 (détruites). */
-export function feelingsFromCsv(text: string): Map<string, { legs: number; note?: string }> {
-  const out = new Map<string, { legs: number; note?: string }>();
-  for (const r of parseCsv(text)) {
-    const dk = parseDateKey(r['date'] ?? '');
-    const legs = parseNumber(r['jambes']);
-    if (dk && legs !== undefined) out.set(dk, { legs, note: r['commentaire'] || undefined });
-  }
-  return out;
 }

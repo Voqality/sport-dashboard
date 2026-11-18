@@ -6,4 +6,3 @@ engine/.env
 engine/.data/
 engine/profil.json
 engine/data/muscu.csv
-engine/data/ressenti.csv
