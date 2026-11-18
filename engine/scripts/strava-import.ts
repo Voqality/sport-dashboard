@@ -52,7 +52,7 @@ async function tokenRequest(body: Record<string, string>): Promise<Tokens> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) fail(`Strava a refusé la demande de jeton (${res.status}). Vérifie le Client ID et le Client Secret dans engine/.env.`);
+  if (!res.ok) fail(`Strava a refusé la demande de jeton (${res.status}). Soit le code a expiré (refais la manip en moins de 5 minutes), soit le Client Secret de engine/.env est mal copié.`);
   return (await res.json()) as Tokens;
 }
 
@@ -151,9 +151,11 @@ async function authorizeFromPhone(clientId: string, clientSecret: string): Promi
       if (!match) { console.log('   ⚠ Je ne trouve pas « code= » dans ce que tu as collé. Recopie toute l’adresse de la page d’erreur.\n'); continue; }
       const params = new URLSearchParams(answer.slice(answer.indexOf('?') + 1));
       if (params.get('state') && params.get('state') !== state) { console.log('   ⚠ Cette adresse vient d’un ancien lien. Utilise le lien affiché ci-dessus.\n'); continue; }
-      if (params.get('scope') && !params.get('scope')!.includes('activity:read')) fail('La case d’accès aux activités a été décochée. Relance « npm.cmd run strava:iphone » et laisse tout coché.');
+      if (params.get('scope') && !params.get('scope')!.includes('activity:read')) { rl.close(); fail('La case d’accès aux activités a été décochée. Relance « npm.cmd run strava:iphone » et laisse tout coché.'); }
+      rl.close(); // fermé avant tout arrêt éventuel du programme (évite un plantage de Node sous Windows)
       return await tokenRequest({ client_id: clientId, client_secret: clientSecret, code: decodeURIComponent(match[1]), grant_type: 'authorization_code' });
     }
+    rl.close();
     fail('Trop d’essais. Relance « npm.cmd run strava:iphone ».');
   } finally {
     rl.close();
