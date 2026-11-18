@@ -4,9 +4,12 @@
   "private": true,
   "description": "Prototype du moteur de charge et de fatigue HYBRID (course + musculation)",
   "type": "module",
-  "engines": { "node": ">=22.18" },
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "strava": "node scripts/strava-import.ts",
+    "strava:iphone": "node scripts/strava-import.ts iphone",
     "rapport": "node scripts/rapport.ts",
     "test": "node --test test/engine.test.ts"
   }

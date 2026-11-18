@@ -1,9 +1,11 @@
 // Importe tes activités Strava des N derniers jours dans engine/.data/activities-strava.json.
 // Usage : npm run strava            (90 jours par défaut, ou "jours" de profil.json)
 //         npm run strava -- 180     (nombre de jours)
+//         npm run strava:iphone     (autorisation depuis l'app Strava de l'iPhone)
 //
 // Le Client Secret est lu dans engine/.env : il reste sur ton PC et n'est jamais affiché.
 import { createServer } from 'node:http';
+import { createInterface } from 'node:readline/promises';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -106,6 +108,58 @@ function authorize(clientId: string, clientSecret: string): Promise<Tokens> {
   });
 }
 
+/** Copie un texte dans le presse-papiers de Windows (silencieux en cas d'échec). */
+function copyToClipboard(text: string): boolean {
+  if (process.platform !== 'win32') return false;
+  try {
+    const p = spawn('clip', [], { stdio: ['pipe', 'ignore', 'ignore'] });
+    p.on('error', () => {});
+    p.stdin.end(text);
+    return true;
+  } catch { return false; }
+}
+
+/**
+ * Mode iPhone : l'autorisation se fait dans l'app Strava du téléphone.
+ * Strava renvoie ensuite vers http://localhost/… ; sur l'iPhone, Safari affiche une erreur,
+ * mais l'adresse de cette page contient le code d'autorisation, que l'on recolle ici.
+ */
+async function authorizeFromPhone(clientId: string, clientSecret: string): Promise<Tokens> {
+  const state = randomBytes(4).toString('hex');
+  const url = 'https://www.strava.com/oauth/mobile/authorize?' + new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: 'http://localhost/',
+    response_type: 'code',
+    approval_prompt: 'auto',
+    scope: 'read,activity:read_all',
+    state,
+  });
+  const copied = copyToClipboard(url);
+  console.log('\n📱 MODE IPHONE\n');
+  console.log('1. Envoie-toi ce lien sur ton iPhone (Discord, WhatsApp, e-mail…)' + (copied ? ' : il est déjà copié, fais juste Ctrl + V.' : ' :'));
+  console.log('\n   ' + url + '\n');
+  console.log('2. Sur l’iPhone, touche le lien : l’app Strava s’ouvre → « Autoriser ».');
+  console.log('3. Safari affiche ensuite une page d’erreur : c’est normal.');
+  console.log('   Appuie longuement sur la barre d’adresse → « Copier », et renvoie cette adresse sur ton PC.');
+  console.log('4. Colle-la ci-dessous (clic droit ou Ctrl + V), puis Entrée.\n');
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const answer = (await rl.question('Adresse de la page d’erreur : ')).trim();
+      const match = answer.match(/[?&]code=([^&\s#]+)/);
+      if (!match) { console.log('   ⚠ Je ne trouve pas « code= » dans ce que tu as collé. Recopie toute l’adresse de la page d’erreur.\n'); continue; }
+      const params = new URLSearchParams(answer.slice(answer.indexOf('?') + 1));
+      if (params.get('state') && params.get('state') !== state) { console.log('   ⚠ Cette adresse vient d’un ancien lien. Utilise le lien affiché ci-dessus.\n'); continue; }
+      if (params.get('scope') && !params.get('scope')!.includes('activity:read')) fail('La case d’accès aux activités a été décochée. Relance « npm.cmd run strava:iphone » et laisse tout coché.');
+      return await tokenRequest({ client_id: clientId, client_secret: clientSecret, code: decodeURIComponent(match[1]), grant_type: 'authorization_code' });
+    }
+    fail('Trop d’essais. Relance « npm.cmd run strava:iphone ».');
+  } finally {
+    rl.close();
+  }
+}
+
 async function getTokens(clientId: string, clientSecret: string): Promise<Tokens> {
   if (existsSync(TOKENS)) {
     const saved = JSON.parse(readFileSync(TOKENS, 'utf8')) as Tokens;
@@ -114,7 +168,7 @@ async function getTokens(clientId: string, clientSecret: string): Promise<Tokens
     const fresh = await tokenRequest({ client_id: clientId, client_secret: clientSecret, grant_type: 'refresh_token', refresh_token: saved.refresh_token });
     return { ...saved, ...fresh };
   }
-  return authorize(clientId, clientSecret);
+  return IPHONE ? authorizeFromPhone(clientId, clientSecret) : authorize(clientId, clientSecret);
 }
 
 async function fetchActivities(accessToken: string, afterEpoch: number): Promise<StravaSummary[]> {
@@ -132,8 +186,11 @@ async function fetchActivities(accessToken: string, afterEpoch: number): Promise
   return all;
 }
 
+const ARGS = process.argv.slice(2);
+const IPHONE = ARGS.includes('iphone');
+
 function readDays(): number {
-  const arg = Number(process.argv[2]);
+  const arg = Number(ARGS.find(a => /^\d+$/.test(a)));
   if (Number.isFinite(arg) && arg > 0) return Math.min(arg, 730);
   const profil = join(ROOT, 'profil.json');
   if (existsSync(profil)) {
