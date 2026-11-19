@@ -31,7 +31,15 @@ export async function connect() {
 async function post(path, body) {
   const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error === 'strava_refus' ? 'Strava a refusé la connexion. Réessaie depuis le début.' : 'Le relais Strava ne répond pas.');
+  if (!res.ok) {
+    const msg = {
+      strava_refus: 'Strava a refusé la connexion : le code a expiré ou le Client Secret enregistré dans Cloudflare est faux. Réessaie depuis le début.',
+      secret_manquant: 'Le Client Secret Strava n’est pas enregistré dans Cloudflare (commande « wrangler secret put STRAVA_CLIENT_SECRET »).',
+      code_invalide: 'Le code reçu de Strava est illisible. Réessaie depuis le début.',
+      jeton_invalide: 'Ce code de connexion n’est pas valide.',
+    }[data.error];
+    throw new Error(msg ?? `Le relais Strava ne répond pas (erreur ${res.status}${data.error ? ` · ${data.error}` : ''}).`);
+  }
   return data;
 }
 

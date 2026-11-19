@@ -10,7 +10,7 @@ import {
   suggestLoad, nextSetLoad, liftRecords, newRecords, weeklyKm, runRecords, predictRace, streak,
 } from './stats.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const appEl = document.getElementById('app');
 const navEl = document.getElementById('nav');
 const toastEl = document.getElementById('toast');

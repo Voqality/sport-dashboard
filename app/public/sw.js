@@ -1,5 +1,5 @@
 // Service worker : l'app s'ouvre et fonctionne sans réseau (à la salle, en mode avion).
-const VERSION = 'hybrid-v1.0.0';
+const VERSION = 'hybrid-v1.0.1';
 const SHELL = [
   '/',
   '/index.html',
