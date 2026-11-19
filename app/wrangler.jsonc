@@ -1,0 +1,9 @@
+{
+  // Worker Cloudflare « hybrid » : sert l'app (dossier public/) et le relais Strava (/api/strava/*).
+  "name": "hybrid",
+  "main": "worker/index.js",
+  "compatibility_date": "2025-09-01",
+  "assets": { "directory": "./public" },
+  "vars": { "STRAVA_CLIENT_ID": "298644" }
+  // Le Client Secret n'est JAMAIS ici : il s'enregistre avec « npx wrangler secret put STRAVA_CLIENT_SECRET ».
+}

@@ -1,0 +1,16 @@
+{
+  "name": "hybrid-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HYBRID : application d'entraînement course + musculation (PWA servie par un Worker Cloudflare)",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/app.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

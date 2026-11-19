@@ -6,3 +6,7 @@ engine/.env
 engine/.data/
 engine/profil.json
 engine/data/muscu.csv
+
+# App (Cloudflare)
+app/.wrangler/
+app/.dev.vars
