@@ -135,7 +135,7 @@ a { color: var(--run); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .link-btn { background: none; border: none; padding: 0; color: var(--run); font-weight: 700; text-decoration: underline; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.chip { min-height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--fg-2); font-size: 13px; }
+.chip { min-height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--fg-2); font-size: 13px; white-space: nowrap; flex-shrink: 0; }
 .seg-ctrl { display: flex; padding: 3px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
 .seg-ctrl button { min-height: 38px; padding: 0 16px; border-radius: 11px; border: none; background: transparent; color: var(--muted); font-weight: 700; font-size: 13px; }
 .seg-ctrl button[aria-pressed="true"] { background: var(--run); color: #03191c; }

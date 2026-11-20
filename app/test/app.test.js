@@ -144,3 +144,43 @@ test('liste de courses : fusion, mise à l’échelle, arrondis, rayons', () => 
   assert.ok(txt.includes('Flocons d’avoine 190 g') && !txt.includes('Whey'));
   assert.equal(buildShoppingList({}).aisles.length, 0);
 });
+
+import { generateMenu, swapRecipe, DEFAULT_NEEDS, recipeById } from '../public/js/recipes.js';
+
+test('menu : nombre de portions respecté et reproductible', () => {
+  const m = generateMenu({ seed: '2026-11-23#0' });
+  const sum = (type) => Object.entries(m).filter(([id]) => recipeById(id).meal === type).reduce((s, [, n]) => s + n, 0);
+  for (const [type, n] of Object.entries(DEFAULT_NEEDS)) assert.equal(sum(type), n, type);
+  assert.deepEqual(generateMenu({ seed: '2026-11-23#0' }), m);
+  assert.notDeepEqual(generateMenu({ seed: '2026-11-23#1' }), m);
+});
+
+test('menu : varié d’une semaine à l’autre et entre les plats', () => {
+  let history = [];
+  for (const w of ['2026-11-23', '2026-11-30', '2026-12-07', '2026-12-14']) {
+    const m = generateMenu({ seed: `${w}#0`, avoid: history.slice(-2).flat() });
+    const ids = Object.keys(m);
+    for (const prev of history.slice(-2)) assert.equal(ids.filter(id => prev.includes(id)).length, 0, `${w} répète une recette récente`);
+    const proteins = ids.map(recipeById).filter(r => r.meal === 'plat').map(r => r.protein);
+    assert.equal(new Set(proteins).size, proteins.length, `${w} : protéines ${proteins}`);
+    history.push(ids);
+  }
+});
+
+test('menu : la semaine de la course contient un plat de veille de course', () => {
+  for (let k = 0; k < 10; k++) {
+    const m = generateMenu({ seed: `course#${k}`, mustTag: 'veille-course' });
+    assert.ok(Object.keys(m).some(id => recipeById(id).tags.includes('veille-course')));
+  }
+});
+
+test('menu : changer une recette garde le même type et les mêmes portions', () => {
+  const m = generateMenu({ seed: 's' });
+  const plat = Object.keys(m).find(id => recipeById(id).meal === 'plat');
+  const m2 = swapRecipe(m, plat, { seed: 'x' });
+  assert.equal(m2[plat], undefined);
+  const added = Object.keys(m2).find(id => !(id in m));
+  assert.equal(recipeById(added).meal, 'plat');
+  assert.equal(m2[added], m[plat]);
+  assert.equal(Object.keys(m2).length, Object.keys(m).length);
+});

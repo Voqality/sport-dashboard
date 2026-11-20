@@ -9,9 +9,9 @@ import {
   fmtPace, fmtDuration, fmtKm, fmtKg, paceOf, isRun, activityDay, matchRun, matchWorkout, isDone,
   suggestLoad, nextSetLoad, liftRecords, newRecords, weeklyKm, runRecords, predictRace, streak,
 } from './stats.js';
-import { RECIPES, TAGS, AISLES, recipeById, buildShoppingList, shoppingListText, fmtQty } from './recipes.js';
+import { RECIPES, TAGS, AISLES, MEAL_TYPES, DEFAULT_NEEDS, recipeById, buildShoppingList, shoppingListText, fmtQty, generateMenu, swapRecipe } from './recipes.js';
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const appEl = document.getElementById('app');
 const navEl = document.getElementById('nav');
 const toastEl = document.getElementById('toast');
@@ -32,6 +32,9 @@ const S = {
   shopChecked: [],
   shopExtra: [],
   recipeTag: 'all',
+  menuWeek: null, // lundi de la semaine du menu en cours
+  menuSeed: 0,
+  menuHistory: {}, // { lundi: [recetteIds] }
 };
 
 async function load() {
@@ -41,6 +44,8 @@ async function load() {
   S.moves ??= {}; S.creatine ??= []; S.whey ??= []; S.settings ??= {};
   [S.mealPlan, S.shopChecked, S.shopExtra] = await Promise.all([db.get('mealPlan'), db.get('shopChecked'), db.get('shopExtra')]);
   S.mealPlan ??= {}; S.shopChecked ??= []; S.shopExtra ??= [];
+  [S.menuWeek, S.menuSeed, S.menuHistory] = await Promise.all([db.get('menuWeek'), db.get('menuSeed'), db.get('menuHistory')]);
+  S.menuSeed ??= 0; S.menuHistory ??= {};
   S.activities.sort((a, b) => String(b.start_date_local).localeCompare(String(a.start_date_local)));
 }
 
@@ -606,6 +611,84 @@ const portionsCount = () => Object.values(S.mealPlan).reduce((s, n) => s + (n > 
 const currentList = () => buildShoppingList(S.mealPlan, S.shopExtra);
 const shopCount = () => { const l = currentList(); return l.aisles.reduce((s, a) => s + a.items.length, 0); };
 
+
+// ───────── Menu de la semaine ─────────
+
+const thisMonday = () => mondayOf(today());
+const needs = () => ({ ...DEFAULT_NEEDS, ...(S.settings.needs ?? {}) });
+
+/** Recettes des 2 semaines précédentes : à éviter pour varier. */
+function recentRecipes(monday) {
+  return [addDaysKey(monday, -7), addDaysKey(monday, -14)].flatMap(w => S.menuHistory[w] ?? []);
+}
+
+/** La semaine de la course, le menu contient forcément un plat « veille de course ». */
+const mustTagFor = (monday) => (sessionsOfWeek(monday, S.moves).some(x => x.race) ? 'veille-course' : null);
+
+async function saveMenu() {
+  S.menuHistory[S.menuWeek] = Object.keys(S.mealPlan);
+  // On ne garde que les 8 dernières semaines d'historique.
+  for (const w of Object.keys(S.menuHistory).sort().slice(0, -8)) delete S.menuHistory[w];
+  await Promise.all([db.set('mealPlan', S.mealPlan), db.set('menuWeek', S.menuWeek), db.set('menuSeed', S.menuSeed), db.set('menuHistory', S.menuHistory), db.set('shopChecked', S.shopChecked)]);
+}
+
+async function generateWeekMenu(newSeed = false) {
+  const monday = thisMonday();
+  S.menuSeed = newSeed || S.menuWeek === monday ? S.menuSeed + 1 : 0;
+  S.menuWeek = monday;
+  S.mealPlan = generateMenu({ seed: `${monday}#${S.menuSeed}`, needs: needs(), avoid: recentRecipes(monday), mustTag: mustTagFor(monday) });
+  S.shopChecked = [];
+  await saveMenu();
+}
+
+function menuCard() {
+  const monday = thisMonday();
+  const current = S.menuWeek === monday && portionsCount() > 0;
+  if (!current) {
+    return `
+      <section class="card" style="gap:12px">
+        <span class="tag muscu">${S.menuWeek ? 'Nouvelle semaine' : 'Menu de la semaine'}</span>
+        <h2 class="h2" style="font-size:26px">Ton menu de la semaine du ${esc(formatDay(monday, { withDow: false }))}</h2>
+        <span class="small muted">Je choisis des recettes différentes des 2 semaines précédentes, avec des protéines variées${mustTagFor(monday) ? ', et un plat de veille de course' : ''}. La liste de courses suit.</span>
+        <button type="button" class="btn primary block" data-action="menu-generate">Générer mon menu varié</button>
+      </section>`;
+  }
+  const groups = Object.entries(MEAL_TYPES).map(([type, label]) => {
+    const items = Object.entries(S.mealPlan).map(([id, n]) => ({ r: recipeById(id), n })).filter(x => x.r && x.r.meal === type);
+    if (!items.length) return '';
+    return `<h3 class="section-title" style="margin:10px 0 0">${esc(label)}</h3>` + items.map(({ r, n }) => `
+      <div class="item">
+        <a href="#/recette/${esc(r.id)}" class="grow" style="color:var(--fg);text-decoration:none"><span>${esc(r.title)}</span><span class="tiny muted">${n} portion${n > 1 ? 's' : ''} · ${r.macros.p} g de protéines chacune</span></a>
+        <button type="button" class="chip" data-action="menu-swap" data-id="${esc(r.id)}" style="flex-shrink:0">Changer</button>
+      </div>`).join('');
+  }).join('');
+  return `
+    <section class="card" style="gap:6px">
+      <div class="row-between" style="align-items:center"><span class="tag muscu">Menu du ${esc(formatDay(monday, { short: true, withDow: false }))}</span><button type="button" class="link-btn" data-action="menu-regenerate" style="white-space:nowrap">Tout changer</button></div>
+      <div class="list">${groups}</div>
+      <a class="btn primary block" href="#/courses" style="margin-top:10px">Voir la liste de courses</a>
+    </section>`;
+}
+
+function needsSettings() {
+  const n = needs();
+  return `
+    <details style="border-top:1px solid var(--line);padding-top:12px">
+      <summary class="small" style="cursor:pointer;color:var(--fg-2)">Nombre de repas à prévoir chaque semaine</summary>
+      <div class="list" style="margin-top:8px">
+        ${Object.entries(MEAL_TYPES).map(([type, label]) => `
+          <div class="item"><span>${esc(label)}</span>
+            <div class="stepper" style="gap:10px">
+              <button type="button" data-action="needs" data-type="${type}" data-d="-1" aria-label="Moins">−</button>
+              <b class="num" style="font-size:22px;min-width:28px;text-align:center">${n[type]}</b>
+              <button type="button" data-action="needs" data-type="${type}" data-d="1" aria-label="Plus">+</button>
+            </div>
+          </div>`).join('')}
+      </div>
+      <span class="tiny muted">Pris en compte au prochain menu généré.</span>
+    </details>`;
+}
+
 function portionStepper(id) {
   const n = S.mealPlan[id] ?? 0;
   return `<div class="stepper" style="gap:10px;justify-content:flex-end">
@@ -624,7 +707,10 @@ function viewRecettes() {
   return `
     <div class="screen">
       <header class="top" style="align-items:center;justify-content:flex-start;gap:4px"><a class="back" href="#/nutrition" aria-label="Retour">${I.back}</a><h1 class="title" style="font-size:32px">Recettes</h1></header>
-      <p class="small muted" style="margin:0">Choisis combien de portions tu veux de chaque recette cette semaine : la liste de courses se calcule toute seule.</p>
+      ${menuCard()}
+      ${needsSettings()}
+      <h2 class="section-title" style="margin:6px 0 -8px">Toutes les recettes (${RECIPES.length})</h2>
+      <p class="small muted" style="margin:0">Tu peux aussi ajuster les portions à la main.</p>
       <div class="chips" style="flex-wrap:nowrap;overflow-x:auto;margin:0 -20px;padding:0 20px 4px">${chips}</div>
       <section style="display:flex;flex-direction:column;gap:12px">
         ${list.map(r => `
@@ -642,9 +728,7 @@ function viewRecettes() {
             </div>
           </article>`).join('')}
       </section>
-      <div class="footer-cta" style="bottom:calc(env(safe-area-inset-bottom, 0px) + 72px)">
-        <a class="btn ${n ? 'primary' : ''} block" href="#/courses">${n ? `Voir la liste de courses · ${n} portion${n > 1 ? 's' : ''}` : 'Voir la liste de courses'}</a>
-      </div>
+      <a class="btn block" href="#/courses">Voir la liste de courses</a>
     </div>`;
 }
 
@@ -701,6 +785,7 @@ function viewCourses() {
   return `
     <div class="screen">
       <header class="top" style="align-items:center;justify-content:flex-start;gap:4px"><a class="back" href="#/nutrition" aria-label="Retour">${I.back}</a><h1 class="title" style="font-size:32px">Courses</h1></header>
+      ${S.menuWeek && S.menuWeek < thisMonday() ? `<section class="notice" style="background:var(--lift-soft);border-color:#4a2412"><span style="font-weight:700">Nouvelle semaine</span><span class="small" style="color:var(--fg-2)">Cette liste correspond au menu de la semaine du ${esc(formatDay(S.menuWeek, { withDow: false }))}.</span><button type="button" class="btn primary small" data-action="menu-generate">Générer le menu de cette semaine</button></section>` : ''}
       ${empty ? emptyState('Ta liste est vide', 'Choisis tes recettes de la semaine, ou ajoute des articles ci-dessous.') + '<a class="btn primary block" href="#/recettes">Choisir mes recettes</a>' : `
       <div class="row-between small"><span class="muted"><b style="color:var(--fg)">${total - done}</b> article(s) à prendre</span><span class="muted">${done} dans le panier</span></div>
       <span style="height:6px;border-radius:3px;background:var(--line);display:flex;margin-top:-12px"><span style="width:${total ? Math.round((done / total) * 100) : 0}%;border-radius:3px;background:var(--ok)"></span></span>`}
@@ -723,7 +808,7 @@ function viewCourses() {
       ${empty ? '' : `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <button type="button" class="btn small" data-action="shop-share">Partager</button>
-        <button type="button" class="btn small" data-action="shop-new-week">Nouvelle semaine</button>
+        <button type="button" class="btn small" data-action="shop-new-week">Nouveau menu</button>
       </div>`}
     </div>`;
 }
@@ -1009,12 +1094,33 @@ document.addEventListener('click', async (e) => {
     }
 
     // Recettes et courses
+
+    case 'menu-generate': await generateWeekMenu(); toast('Menu de la semaine prêt'); if (location.hash !== '#/recettes') location.hash = '#/recettes'; else render(); break;
+    case 'menu-regenerate': await generateWeekMenu(true); toast('Nouveau menu'); render(); break;
+    case 'menu-swap': {
+      const before = Object.keys(S.mealPlan);
+      S.mealPlan = swapRecipe(S.mealPlan, el.dataset.id, { seed: `${S.menuWeek}#${S.menuSeed}#${Date.now()}`, avoid: recentRecipes(thisMonday()) });
+      await saveMenu();
+      const added = Object.keys(S.mealPlan).find(k => !before.includes(k));
+      toast(added ? `Remplacé par : ${recipeById(added).title}` : 'Pas d’autre recette disponible');
+      render();
+      break;
+    }
+    case 'needs': {
+      const n = needs();
+      n[el.dataset.type] = Math.max(0, Math.min(14, n[el.dataset.type] + Number(el.dataset.d)));
+      S.settings.needs = n;
+      await db.set('settings', S.settings);
+      render();
+      break;
+    }
     case 'recipe-tag': S.recipeTag = el.dataset.tag; render(); break;
     case 'portion': {
       const id = el.dataset.id;
       const n = Math.max(0, Math.min(20, (S.mealPlan[id] ?? 0) + Number(el.dataset.d)));
       if (n) S.mealPlan[id] = n; else delete S.mealPlan[id];
-      await db.set('mealPlan', S.mealPlan);
+      S.menuWeek = thisMonday();
+      await saveMenu();
       render();
       break;
     }
@@ -1051,11 +1157,12 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'shop-new-week': {
-      if (!confirm('Vider la liste et les recettes choisies pour repartir sur une nouvelle semaine ?')) break;
-      S.mealPlan = {}; S.shopChecked = []; S.shopExtra = [];
-      await Promise.all([db.set('mealPlan', {}), db.set('shopChecked', []), db.set('shopExtra', [])]);
-      toast('Nouvelle semaine : choisis tes recettes');
-      render();
+      if (!confirm('Générer un nouveau menu et une nouvelle liste ? Les articles ajoutés à la main seront retirés.')) break;
+      S.shopExtra = [];
+      await db.set('shopExtra', []);
+      await generateWeekMenu(true);
+      toast('Nouveau menu généré');
+      location.hash = '#/recettes';
       break;
     }
     case 'export': {
