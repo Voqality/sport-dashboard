@@ -9,8 +9,9 @@ import {
   fmtPace, fmtDuration, fmtKm, fmtKg, paceOf, isRun, activityDay, matchRun, matchWorkout, isDone,
   suggestLoad, nextSetLoad, liftRecords, newRecords, weeklyKm, runRecords, predictRace, streak,
 } from './stats.js';
+import { RECIPES, TAGS, AISLES, recipeById, buildShoppingList, shoppingListText, fmtQty } from './recipes.js';
 
-const VERSION = '1.0.1';
+const VERSION = '1.1.0';
 const appEl = document.getElementById('app');
 const navEl = document.getElementById('nav');
 const toastEl = document.getElementById('toast');
@@ -27,6 +28,10 @@ const S = {
   syncing: false,
   perfTab: 'course',
   seance: null, // séance muscu en cours d'affichage
+  mealPlan: {}, // { recetteId: portions }
+  shopChecked: [],
+  shopExtra: [],
+  recipeTag: 'all',
 };
 
 async function load() {
@@ -34,6 +39,8 @@ async function load() {
     db.all('activities'), db.all('workouts'), db.get('moves'), db.get('creatine'), db.get('whey'), db.get('settings'), strava.status(), db.get('lastSync'),
   ]);
   S.moves ??= {}; S.creatine ??= []; S.whey ??= []; S.settings ??= {};
+  [S.mealPlan, S.shopChecked, S.shopExtra] = await Promise.all([db.get('mealPlan'), db.get('shopChecked'), db.get('shopExtra')]);
+  S.mealPlan ??= {}; S.shopChecked ??= []; S.shopExtra ??= [];
   S.activities.sort((a, b) => String(b.start_date_local).localeCompare(String(a.start_date_local)));
 }
 
@@ -586,8 +593,138 @@ function viewNutrition() {
           <span class="grow"><span style="font-weight:700">Protéines du jour</span><span class="tiny muted">${weight ? `Vise environ ${Math.round(weight * 1.6)} à ${Math.round(weight * 2)} g (1,6 à 2 g par kg)` : 'Indique ton poids dans Profil pour calculer ta cible'}</span></span>
           ${weight ? `<b class="num" style="font-size:22px">${Math.round(weight * 1.8)} g</b>` : `<a class="link-btn" href="#/profil">Profil</a>`}
         </div>
-        <div class="item"><span class="grow"><span style="font-weight:700">Calcul des macros, recettes, liste de courses</span><span class="tiny muted">Prochaine version de l'app</span></span></div>
+        <a class="item" href="#/recettes"><span class="grow"><span style="font-weight:700">Recettes de la semaine</span><span class="tiny muted">${portionsCount() ? `${portionsCount()} portion(s) choisie(s)` : 'Choisis tes repas, la liste de courses se fait toute seule'}</span></span>${I.next}</a>
+        <a class="item" href="#/courses"><span class="grow"><span style="font-weight:700">Liste de courses</span><span class="tiny muted">${shopCount() ? `${shopCount()} article(s) · triés par rayon` : 'Vide pour l’instant'}</span></span>${I.next}</a>
       </section>
+    </div>`;
+}
+
+
+// ───────── Recettes et liste de courses ─────────
+
+const portionsCount = () => Object.values(S.mealPlan).reduce((s, n) => s + (n > 0 ? n : 0), 0);
+const currentList = () => buildShoppingList(S.mealPlan, S.shopExtra);
+const shopCount = () => { const l = currentList(); return l.aisles.reduce((s, a) => s + a.items.length, 0); };
+
+function portionStepper(id) {
+  const n = S.mealPlan[id] ?? 0;
+  return `<div class="stepper" style="gap:10px;justify-content:flex-end">
+    <button type="button" data-action="portion" data-id="${esc(id)}" data-d="-1" aria-label="Une portion de moins" ${n ? '' : 'disabled style="opacity:.4"'}>−</button>
+    <span class="v" style="min-width:40px"><b style="font-size:26px">${n}</b><span class="tiny muted">portion${n > 1 ? 's' : ''}</span></span>
+    <button type="button" data-action="portion" data-id="${esc(id)}" data-d="1" aria-label="Une portion de plus">+</button>
+  </div>`;
+}
+
+function viewRecettes() {
+  const tag = S.recipeTag;
+  const list = RECIPES.filter(r => tag === 'all' || r.tags.includes(tag));
+  const n = portionsCount();
+  const chips = [['all', 'Toutes'], ...Object.entries(TAGS)].map(([k, label]) =>
+    `<button type="button" class="chip" data-action="recipe-tag" data-tag="${k}" aria-pressed="${tag === k}" style="${tag === k ? 'background:var(--fg);color:var(--bg);border-color:var(--fg)' : ''}">${esc(label)}</button>`).join('');
+  return `
+    <div class="screen">
+      <header class="top" style="align-items:center;justify-content:flex-start;gap:4px"><a class="back" href="#/nutrition" aria-label="Retour">${I.back}</a><h1 class="title" style="font-size:32px">Recettes</h1></header>
+      <p class="small muted" style="margin:0">Choisis combien de portions tu veux de chaque recette cette semaine : la liste de courses se calcule toute seule.</p>
+      <div class="chips" style="flex-wrap:nowrap;overflow-x:auto;margin:0 -20px;padding:0 20px 4px">${chips}</div>
+      <section style="display:flex;flex-direction:column;gap:12px">
+        ${list.map(r => `
+          <article class="card" style="padding:16px;gap:10px;border-radius:20px">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <a href="#/recette/${esc(r.id)}" style="color:var(--fg);text-decoration:none"><h2 class="h2" style="font-size:24px">${esc(r.title)}</h2></a>
+              <span class="tiny muted">${esc(r.when)} · ${r.minutes} min</span>
+            </div>
+            <div class="row-between" style="align-items:center">
+              <span class="small"><b class="num" style="font-size:20px">${r.macros.kcal}</b> <span class="muted">kcal ·</span> <b class="num lift-c" style="font-size:20px">${r.macros.p} g</b> <span class="muted">prot. / portion</span></span>
+            </div>
+            <div class="row-between" style="align-items:center">
+              <a class="link-btn" href="#/recette/${esc(r.id)}">Voir la recette</a>
+              ${portionStepper(r.id)}
+            </div>
+          </article>`).join('')}
+      </section>
+      <div class="footer-cta" style="bottom:calc(env(safe-area-inset-bottom, 0px) + 72px)">
+        <a class="btn ${n ? 'primary' : ''} block" href="#/courses">${n ? `Voir la liste de courses · ${n} portion${n > 1 ? 's' : ''}` : 'Voir la liste de courses'}</a>
+      </div>
+    </div>`;
+}
+
+function viewRecette(id) {
+  const r = recipeById(id);
+  if (!r) return viewNotFound();
+  const portions = S.mealPlan[id] || r.servings;
+  const f = portions / r.servings;
+  return `
+    <div class="screen no-nav">
+      <header class="top"><a class="back" href="#/recettes" aria-label="Retour">${I.back}</a></header>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span class="eyebrow">${r.tags.map(t => esc(TAGS[t])).join(' · ')}</span>
+        <h1 class="title" style="font-size:36px">${esc(r.title)}</h1>
+        <span class="small muted">${esc(r.when)} · ${r.minutes} min</span>
+      </div>
+      <section class="stats3">
+        <div><span class="lbl">Énergie</span><span class="val">${r.macros.kcal}<span class="unit"> kcal</span></span></div>
+        <div><span class="lbl">Protéines</span><span class="val lift-c">${r.macros.p}<span class="unit"> g</span></span></div>
+        <div><span class="lbl">Glucides</span><span class="val run-c">${r.macros.g}<span class="unit"> g</span></span></div>
+      </section>
+      <span class="tiny muted" style="margin-top:-12px">Par portion, valeurs estimées.</span>
+      <section class="card" style="padding:14px 16px;gap:8px;border-radius:20px">
+        <div class="row-between" style="align-items:center"><span style="font-weight:700">Cette semaine</span>${portionStepper(r.id)}</div>
+      </section>
+      <section class="list bordered">
+        <h2 class="section-title">Ingrédients · ${portions} portion${portions > 1 ? 's' : ''}</h2>
+        ${r.ingredients.map(x => `<div class="item"><span>${esc(x.name)}${x.staple ? '<span class="tiny muted"> · placard</span>' : ''}</span><span class="num muted" style="font-size:18px">${esc(fmtQty(x.unit === 'pièce' ? Math.ceil(x.qty * f - 1e-9) : Math.round(x.qty * f), x.unit))}</span></div>`).join('')}
+      </section>
+      <section>
+        <h2 class="section-title">Préparation</h2>
+        <ol style="margin:0;padding-left:22px;display:flex;flex-direction:column;gap:10px">${r.steps.map(st => `<li>${esc(st)}</li>`).join('')}</ol>
+      </section>
+    </div>`;
+}
+
+function viewCourses() {
+  const list = currentList();
+  const checked = new Set(S.shopChecked);
+  const total = list.aisles.reduce((s, a) => s + a.items.length, 0);
+  const done = list.aisles.reduce((s, a) => s + a.items.filter(x => checked.has(x.key)).length, 0);
+  const row = (x) => {
+    const on = checked.has(x.key);
+    return `<div class="item" style="padding:0">
+      <button type="button" data-action="shop-check" data-key="${esc(x.key)}" aria-pressed="${on}" style="flex:1;display:flex;align-items:center;gap:12px;min-height:52px;background:none;border:none;padding:0;text-align:left;color:inherit">
+        <span style="width:24px;height:24px;border-radius:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;${on ? 'background:var(--ok);color:#06120c' : 'border:1.5px solid #3a465e'}">${on ? I.check : ''}</span>
+        <span class="grow" style="${on ? 'color:var(--faint);text-decoration:line-through' : ''}"><span>${esc(x.name)}</span>${x.recipes.length ? `<span class="tiny muted" style="text-decoration:none">${esc(x.recipes.join(', '))}</span>` : ''}</span>
+        ${x.qty ? `<span class="num" style="font-size:18px;${on ? 'color:var(--faint)' : ''}">${esc(fmtQty(x.qty, x.unit))}</span>` : ''}
+      </button>
+      ${x.extra ? `<button type="button" class="back" data-action="shop-remove" data-key="${esc(x.key)}" aria-label="Retirer ${esc(x.name)}" style="margin:0;color:var(--faint);background:none;border:none">${I.close}</button>` : ''}
+    </div>`;
+  };
+  const empty = !total && !list.staples.length;
+  return `
+    <div class="screen">
+      <header class="top" style="align-items:center;justify-content:flex-start;gap:4px"><a class="back" href="#/nutrition" aria-label="Retour">${I.back}</a><h1 class="title" style="font-size:32px">Courses</h1></header>
+      ${empty ? emptyState('Ta liste est vide', 'Choisis tes recettes de la semaine, ou ajoute des articles ci-dessous.') + '<a class="btn primary block" href="#/recettes">Choisir mes recettes</a>' : `
+      <div class="row-between small"><span class="muted"><b style="color:var(--fg)">${total - done}</b> article(s) à prendre</span><span class="muted">${done} dans le panier</span></div>
+      <span style="height:6px;border-radius:3px;background:var(--line);display:flex;margin-top:-12px"><span style="width:${total ? Math.round((done / total) * 100) : 0}%;border-radius:3px;background:var(--ok)"></span></span>`}
+      ${list.aisles.map(a => `<section class="list bordered"><h2 class="section-title">${esc(a.name)}</h2>${a.items.map(row).join('')}</section>`).join('')}
+      ${list.staples.length ? `<section class="list bordered"><h2 class="section-title">À vérifier dans tes placards</h2>${list.staples.map(x => `<div class="item"><span class="muted">${esc(x.name)}</span></div>`).join('')}</section>` : ''}
+      <section style="display:flex;flex-direction:column;gap:10px">
+        <h2 class="section-title">Ajouter un article</h2>
+        <div class="chips">
+          <button type="button" class="chip" data-action="shop-quick" data-name="Créatine monohydrate" data-aisle="nutrition">+ Créatine</button>
+          <button type="button" class="chip" data-action="shop-quick" data-name="Whey" data-aisle="nutrition">+ Whey</button>
+          <button type="button" class="chip" data-action="shop-quick" data-name="Bananes" data-aisle="fruits-legumes">+ Bananes</button>
+          <button type="button" class="chip" data-action="shop-quick" data-name="Œufs" data-aisle="cremerie">+ Œufs</button>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px">
+          <label class="field" style="gap:0"><span class="tiny muted" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Article</span><input id="shop-name" placeholder="Par exemple : riz, café…" autocomplete="off"></label>
+          <button type="button" class="btn small run" data-action="shop-add">Ajouter</button>
+        </div>
+        <label class="field"><span class="tiny muted">Rayon</span><select id="shop-aisle" style="min-height:44px;border-radius:12px;border:1px solid var(--border-strong);background:var(--surface);padding:0 12px">${AISLES.map(a => `<option value="${a.id}" ${a.id === 'divers' ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label>
+      </section>
+      ${empty ? '' : `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <button type="button" class="btn small" data-action="shop-share">Partager</button>
+        <button type="button" class="btn small" data-action="shop-new-week">Nouvelle semaine</button>
+      </div>`}
     </div>`;
 }
 
@@ -708,10 +845,16 @@ async function render() {
     case 'perfs': html = viewPerfs(); nav = 'perfs'; break;
     case 'coach': html = viewCoach(); nav = 'coach'; break;
     case 'nutrition': html = viewNutrition(); nav = 'nutrition'; break;
+    case 'recettes': html = viewRecettes(); nav = 'nutrition'; break;
+    case 'recette': html = viewRecette(arg); break;
+    case 'courses': html = viewCourses(); nav = 'nutrition'; break;
     case 'profil': html = viewProfil(); break;
     default: html = viewNotFound();
   }
   appEl.innerHTML = html;
+  // L'animation d'arrivée ne joue qu'au changement d'écran, pas à chaque mise à jour du même écran.
+  if (location.hash === render.lastHash && appEl.firstElementChild) appEl.firstElementChild.style.animation = 'none';
+  render.lastHash = location.hash;
   navEl.hidden = !nav;
   if (nav) navEl.innerHTML = navHtml(nav);
   tick();
@@ -862,6 +1005,57 @@ document.addEventListener('click', async (e) => {
       const w = S.workouts.find(x => x.id === el.dataset.id);
       const txt = `${w.title} : ${w.sets.length} séries en ${fmtDuration((w.endedAt - w.startedAt) / 1000)} 💪 #HYBRID`;
       try { if (navigator.share) await navigator.share({ text: txt }); else { await navigator.clipboard.writeText(txt); toast('Texte copié'); } } catch { /* annulé */ }
+      break;
+    }
+
+    // Recettes et courses
+    case 'recipe-tag': S.recipeTag = el.dataset.tag; render(); break;
+    case 'portion': {
+      const id = el.dataset.id;
+      const n = Math.max(0, Math.min(20, (S.mealPlan[id] ?? 0) + Number(el.dataset.d)));
+      if (n) S.mealPlan[id] = n; else delete S.mealPlan[id];
+      await db.set('mealPlan', S.mealPlan);
+      render();
+      break;
+    }
+    case 'shop-check': {
+      const k = el.dataset.key;
+      S.shopChecked = S.shopChecked.includes(k) ? S.shopChecked.filter(x => x !== k) : [...S.shopChecked, k];
+      await db.set('shopChecked', S.shopChecked);
+      render();
+      break;
+    }
+    case 'shop-quick':
+    case 'shop-add': {
+      const name = a === 'shop-quick' ? el.dataset.name : document.getElementById('shop-name').value.trim();
+      const aisle = a === 'shop-quick' ? el.dataset.aisle : document.getElementById('shop-aisle').value;
+      if (!name) { toast('Écris le nom de l’article'); break; }
+      if (S.shopExtra.some(x => x.name.toLowerCase() === name.toLowerCase())) { toast(`${name} est déjà dans la liste`); break; }
+      S.shopExtra.push({ id: `${Date.now()}`, name: name.slice(0, 60), aisle });
+      await db.set('shopExtra', S.shopExtra);
+      toast(`${name} ajouté`);
+      render();
+      break;
+    }
+    case 'shop-remove': {
+      const id = el.dataset.key.replace(/^extra\|/, '');
+      S.shopExtra = S.shopExtra.filter(x => x.id !== id);
+      S.shopChecked = S.shopChecked.filter(k => k !== el.dataset.key);
+      await Promise.all([db.set('shopExtra', S.shopExtra), db.set('shopChecked', S.shopChecked)]);
+      render();
+      break;
+    }
+    case 'shop-share': {
+      const txt = shoppingListText(currentList(), S.shopChecked);
+      try { if (navigator.share) await navigator.share({ text: txt }); else { await navigator.clipboard.writeText(txt); toast('Liste copiée'); } } catch { /* annulé */ }
+      break;
+    }
+    case 'shop-new-week': {
+      if (!confirm('Vider la liste et les recettes choisies pour repartir sur une nouvelle semaine ?')) break;
+      S.mealPlan = {}; S.shopChecked = []; S.shopExtra = [];
+      await Promise.all([db.set('mealPlan', {}), db.set('shopChecked', []), db.set('shopExtra', [])]);
+      toast('Nouvelle semaine : choisis tes recettes');
+      render();
       break;
     }
     case 'export': {

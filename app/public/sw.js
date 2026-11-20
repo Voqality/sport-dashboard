@@ -1,5 +1,5 @@
 // Service worker : l'app s'ouvre et fonctionne sans réseau (à la salle, en mode avion).
-const VERSION = 'hybrid-v1.0.1';
+const VERSION = 'hybrid-v1.1.0';
 const SHELL = [
   '/',
   '/index.html',
@@ -8,6 +8,7 @@ const SHELL = [
   '/js/app.js',
   '/js/db.js',
   '/js/plan.js',
+  '/js/recipes.js',
   '/js/stats.js',
   '/js/strava.js',
   '/icons/icon-192.png',

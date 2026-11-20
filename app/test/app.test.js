@@ -107,3 +107,40 @@ test('relais Strava : rejette les requêtes invalides sans appeler Strava', asyn
   assert.equal(r2.status, 400);
   assert.equal((await worker.fetch(new Request('https://h.test/autre'), env)).status, 404);
 });
+
+import { RECIPES, AISLES, buildShoppingList, roundQty, fmtQty, shoppingListText } from '../public/js/recipes.js';
+
+test('recettes : données cohérentes', () => {
+  const aisleIds = new Set(AISLES.map(a => a.id));
+  assert.equal(new Set(RECIPES.map(r => r.id)).size, RECIPES.length);
+  for (const r of RECIPES) {
+    assert.ok(r.servings >= 1 && r.ingredients.length && r.steps.length, r.id);
+    for (const x of r.ingredients) assert.ok(aisleIds.has(x.aisle), `${r.id} : rayon ${x.aisle}`);
+  }
+});
+
+test('liste de courses : fusion, mise à l’échelle, arrondis, rayons', () => {
+  assert.equal(roundQty(43, 'g'), 45);
+  assert.equal(roundQty(213, 'g'), 220);
+  assert.equal(roundQty(0.5, 'pièce'), 1);
+  assert.equal(fmtQty(1600, 'g'), '1,6 kg');
+  assert.equal(fmtQty(2, 'pièce'), '× 2');
+  // 2 overnight oats (1 portion chacune) + 1 portion de pancakes : flocons 2×70 + 50 = 190 g, bananes 3, whey 80 g
+  const list = buildShoppingList({ 'overnight-oats': 2, pancakes: 1 }, [{ id: '1', name: 'Café', aisle: 'divers' }]);
+  const all = list.aisles.flatMap(a => a.items);
+  assert.equal(all.find(x => x.name === 'Flocons d’avoine').qty, 190);
+  assert.equal(all.find(x => x.name === 'Banane').qty, 3);
+  assert.equal(all.find(x => x.name === 'Whey').qty, 80);
+  assert.ok(all.find(x => x.name === 'Café').extra);
+  assert.deepEqual(list.staples.map(x => x.name), ['Miel']);
+  // Ordre des rayons respecté
+  const order = AISLES.map(a => a.id);
+  const idx = list.aisles.map(a => order.indexOf(a.id));
+  assert.deepEqual(idx, [...idx].sort((a, b) => a - b));
+  // Moitié d'une recette pour 2 (1 portion de bowl) : 80 g de riz
+  assert.equal(buildShoppingList({ 'bowl-poulet': 1 }).aisles.flatMap(a => a.items).find(x => x.name === 'Riz basmati').qty, 80);
+  // Texte partagé sans les articles cochés
+  const txt = shoppingListText(list, [all.find(x => x.name === 'Whey').key]);
+  assert.ok(txt.includes('Flocons d’avoine 190 g') && !txt.includes('Whey'));
+  assert.equal(buildShoppingList({}).aisles.length, 0);
+});

@@ -51,7 +51,7 @@ export async function persistStorage() {
   } catch { /* non bloquant */ }
 }
 
-const KV_KEYS = ['moves', 'creatine', 'lastBackup', 'settings'];
+const KV_KEYS = ['moves', 'creatine', 'whey', 'settings', 'mealPlan', 'shopChecked', 'shopExtra'];
 
 /** Sauvegarde complète (sans les jetons Strava). */
 export async function exportData() {
