@@ -1,0 +1,57 @@
+{
+  "name": "Alerte erreurs n8n",
+  "nodes": [
+    {
+      "id": "b2f0c001-0000-4000-8000-000000000001",
+      "name": "Quand un workflow échoue",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "b2f0c001-0000-4000-8000-000000000002",
+      "name": "M’envoyer une alerte",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "sendTo": "TON_EMAIL@exemple.com",
+        "subject": "=⚠️ n8n : échec du workflow « {{ $json.workflow.name }} »",
+        "emailType": "text",
+        "message": "=Le workflow « {{ $json.workflow.name }} » a échoué.\n\nNode en erreur : {{ $json.execution.lastNodeExecuted }}\nMessage : {{ $json.execution.error.message }}\nDate : {{ $now.setZone('Europe/Paris').toFormat('dd/MM/yyyy HH:mm') }}\n\nVoir l'exécution : {{ $json.execution.url }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 10000
+    }
+  ],
+  "connections": {
+    "Quand un workflow échoue": {
+      "main": [
+        [
+          {
+            "node": "M’envoyer une alerte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
